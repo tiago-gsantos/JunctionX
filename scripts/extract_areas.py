@@ -1,9 +1,9 @@
 """Cut every camera image into one rectified, letterboxed crop per planogram area.
 
 Output layout:
-    <out>/<camera_id>/<area_id>_<PRODUCT_SLUG>_<timestamp>.jpg
-    <out>/<camera_id>/_overview.jpg        area outlines + labels on a mid-day frame
-    <out>/<camera_id>/_overview_boxes.jpg  area outlines only (coloured by product)
+    <out>/<camera_id>/<timestamp>/<area_id>_<PRODUCT_SLUG>.jpg
+    <out>/<camera_id>/<timestamp>/_overview.jpg        area outlines + labels
+    <out>/<camera_id>/<timestamp>/_overview_boxes.jpg  area outlines only (coloured by product)
     <out>/manifest.csv
 """
 import argparse
@@ -46,17 +46,18 @@ def main():
         if not images:
             print(f"warning: no images for camera {cam}", file=sys.stderr)
             continue
-        cam_out = args.out / cam
-        cam_out.mkdir(exist_ok=True)
-
         for img_path in images:
             image = cv2.imread(str(img_path))
             if image is None:
                 print(f"warning: cannot read {img_path}, skipping", file=sys.stderr)
                 continue
+            ts_out = args.out / cam / img_path.stem
+            ts_out.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(ts_out / "_overview.jpg"), draw_annotated(image, areas))
+            cv2.imwrite(str(ts_out / "_overview_boxes.jpg"), draw_boxes(image, areas))
             for area in areas:
                 crop, _, visible_frac, (nw, nh) = rectify(image, area.quad, args.size)
-                crop_path = cam_out / f"{area.area_id}_{slugify(area.product_name)}_{img_path.stem}.jpg"
+                crop_path = ts_out / f"{area.area_id}_{slugify(area.product_name)}.jpg"
                 cv2.imwrite(str(crop_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
                 rows.append({
                     "camera_id": cam, "image_file": img_path.name, "area_id": area.area_id,
@@ -64,10 +65,6 @@ def main():
                     "crop_path": crop_path.relative_to(args.out).as_posix(),
                     "visible_frac": f"{visible_frac:.3f}", "native_w": nw, "native_h": nh,
                 })
-
-        mid = cv2.imread(str(images[len(images) // 2]))
-        cv2.imwrite(str(cam_out / "_overview.jpg"), draw_annotated(mid, areas))
-        cv2.imwrite(str(cam_out / "_overview_boxes.jpg"), draw_boxes(mid, areas))
         print(f"{cam}: {len(images)} images x {len(areas)} areas")
 
     with open(args.out / "manifest.csv", "w", newline="", encoding="utf-8") as f:
