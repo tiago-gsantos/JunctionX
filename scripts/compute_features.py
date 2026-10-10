@@ -23,13 +23,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shelfmon.features import AB_FEATURES, area_mask, crop_features  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
-from shelfmon.references import (build_reference, load_references, relative_feature_names,  # noqa: E402
-                                 relative_features, save_references)
+from shelfmon.references import (REFERENCE_BACKBONES, build_reference, load_references,  # noqa: E402
+                                 relative_feature_names, relative_features, save_references)
 from shelfmon.zeroshot import (ZEROSHOT_FEATURES, build_text_bank, load_descriptions, load_kinds,  # noqa: E402
                                zeroshot_features)
 
 KEYS = ["camera_id", "image_file", "area_id"]
-EMBEDDING_BACKBONES = ["siglip2", "dinov2"]  # used for the embedding distances when their .npy exists
 
 
 def main():
@@ -49,7 +48,7 @@ def main():
     planogram = load_planogram(args.planogram)
     areas = {a.area_id: a for cam_areas in planogram.values() for a in cam_areas}
     camera_products = {cam: {a.product_id for a in cam_areas} for cam, cam_areas in planogram.items()}
-    embeddings = {bb: np.load(args.features_dir / f"{bb}.npy") for bb in EMBEDDING_BACKBONES
+    embeddings = {bb: np.load(args.features_dir / f"{bb}.npy") for bb in REFERENCE_BACKBONES
                   if (args.features_dir / f"{bb}.npy").exists()}
     for bb, e in embeddings.items():
         assert len(e) == len(rows), f"{bb}.npy has {len(e)} rows, manifest has {len(rows)}; re-run embed_crops.py"

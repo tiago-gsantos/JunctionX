@@ -16,6 +16,7 @@ from shelfmon.features import AB_FEATURES
 
 FULLEST_BY = "edge_frac_coarse"
 PIXEL_BLUR = (5, 5)  # softens JPEG noise and sub-pixel jitter before comparing pixels
+REFERENCE_BACKBONES = ["siglip2", "dinov2", "dinov3"]  # embedding distances use these (when their .npy exists)
 
 
 @dataclass
