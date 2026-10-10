@@ -1,3 +1,9 @@
 numpy
 opencv-python-headless
 pillow
+torch
+torchvision
+transformers
+timm
+open_clip_torch
+einops
