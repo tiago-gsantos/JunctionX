@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shelf Annotator</title>
+<style>
+  :root {
+    --bg: #15171a; --panel: #1f2226; --line: #33373d; --text: #e8e8e8; --muted: #9aa0a6;
+    --full: #2ecc71; --half: #f5b041; --empty: #e74c3c; --wrong: #ff2fd2; --sel: #4fc3f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px system-ui, sans-serif;
+         height: 100vh; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+  header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: var(--panel);
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header select, header button { background: #2a2e33; color: var(--text); border: 1px solid var(--line);
+           border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  header button:hover { border-color: var(--sel); }
+  .grow { flex: 1; }
+  #status { color: var(--muted); min-width: 70px; }
+  #reviewedBtn.on { background: #1e5631; border-color: var(--full); }
+  main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; padding: 8px; min-height: 0; }
+  #wrap { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: 1280 / 804; width: 100%; }
+  #wrap img, #wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  svg polygon { stroke-width: 2.5; cursor: pointer; fill-opacity: .18; }
+  svg polygon:hover { fill-opacity: .35; }
+  svg polygon.sel { stroke: var(--sel) !important; stroke-width: 5; fill-opacity: .08; }
+  svg polygon.wrong { stroke: var(--wrong); stroke-dasharray: 10 5; stroke-width: 4; }
+  svg text { font: bold 20px system-ui; paint-order: stroke; stroke: #000; stroke-width: 4px; fill: #fff;
+             pointer-events: none; text-anchor: middle; dominant-baseline: middle; }
+  svg.hidden { display: none; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  #zoom { width: 100%; height: 240px; background: #000; display: block; object-fit: contain; border-bottom: 1px solid var(--line); }
+  #list { overflow-y: auto; flex: 1; }
+  .area { padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; border-left: 4px solid transparent; }
+  .area.sel { background: #262b31; border-left-color: var(--sel); }
+  .area .name { font-weight: 600; font-size: 13px; }
+  .area .id { color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 4px; margin-top: 6px; }
+  .row button { flex: 1; padding: 4px 0; border-radius: 5px; border: 1px solid var(--line); background: #2a2e33;
+                color: var(--muted); font: 12px system-ui; cursor: pointer; }
+  .row button.on.empty { background: var(--empty); color: #000; border-color: var(--empty); }
+  .row button.on.half { background: var(--half); color: #000; border-color: var(--half); }
+  .row button.on.full { background: var(--full); color: #000; border-color: var(--full); }
+  .row button.on.ok { background: #3a4048; color: var(--text); }
+  .row button.on.bad { background: var(--wrong); color: #000; border-color: var(--wrong); }
+  #help { padding: 8px 10px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); line-height: 1.6; }
+  kbd { background: #2a2e33; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <select id="cam" title="Camera"></select>
+  <button id="prev" title="Previous image (←)">◀</button>
+  <select id="img" title="Image"></select>
+  <button id="next" title="Next image (→)">▶</button>
+  <button id="copyPrev" title="Copy all labels from the previous image of this camera (P)">Copy previous</button>
+  <button id="reviewedBtn" title="Mark this image as checked (R)">Not reviewed</button>
+  <span class="grow"></span>
+  <span id="progress"></span>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="stage"><div id="wrap"><img id="photo" alt=""><svg id="overlay" viewBox="0 0 1280 804"></svg></div></div>
+  <aside>
+    <img id="zoom" alt="rectified crop of the selected area">
+    <div id="list"></div>
+    <div id="help">
+      <span class="dot" style="background:var(--empty)"></span>empty
+      <span class="dot" style="background:var(--half)"></span>half
+      <span class="dot" style="background:var(--full)"></span>full
+      <span class="dot" style="background:var(--wrong)"></span>wrong product (dashed)<br>
+      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> empty/half/full · <kbd>X</kbd> toggle wrong product ·
+      <kbd>↑</kbd><kbd>↓</kbd>/<kbd>Tab</kbd> area · <kbd>←</kbd><kbd>→</kbd> image ·
+      <kbd>R</kbd> reviewed · <kbd>Enter</kbd> reviewed + next unreviewed · <kbd>P</kbd> copy previous ·
+      <kbd>H</kbd> hold to hide overlay
+    </div>
+  </aside>
+</main>
+<script>
+const LEVELS = { empty: 0, half: 0.5, full: 1 };
+const COLORS = { empty: "var(--empty)", half: "var(--half)", full: "var(--full)" };
+let S, cam, img, sel = 0, saveTimer = null;
+const $ = id => document.getElementById(id);
+
+const images = c => Object.keys(S.frames[c] || {}).filter(f => S.annotations[c]?.[f]).sort();
+const labels = () => S.annotations[cam][img];
+const fileUrl = p => "/files/" + p.split("/").map(encodeURIComponent).join("/");
+const isReviewed = (c, i) => (S.reviewed[c] || []).includes(i);
+
+async function load() {
+  S = await (await fetch("/api/state")).json();
+  for (const c of Object.keys(S.frames).sort()) $("cam").add(new Option(c, c));
+  const saved = JSON.parse(localStorage.getItem("pos") || "null");
+  if (saved && S.annotations[saved.cam]?.[saved.img]) openImage(saved.cam, saved.img);
+  else openImage($("cam").value, images($("cam").value)[0]);
+}
+
+function openImage(c, i) {
+  flush();
+  cam = c; img = i; sel = Math.min(sel, S.areas[cam].length - 1);
+  try { localStorage.setItem("pos", JSON.stringify({ cam, img })); } catch {}
+  $("cam").value = cam;
+  $("img").innerHTML = "";
+  images(cam).forEach((f, k) => $("img").add(new Option(
+    `${isReviewed(cam, f) ? "✓" : "·"} ${k + 1}/${images(cam).length}  ${new Date(+f.split(".")[0] * 1000).toISOString().slice(11, 16)} UTC`, f)));
+  $("img").value = img;
+  $("photo").onload = () => {
+    // _overview.jpg is the 1280x720 frame plus a legend strip; size the overlay to the whole picture.
+    const { naturalWidth: w, naturalHeight: h } = $("photo");
+    $("overlay").setAttribute("viewBox", `0 0 ${w} ${h}`);
+    $("wrap").style.aspectRatio = `${w} / ${h}`;
+  };
+  $("photo").src = fileUrl(S.frames[cam][img].overview);
+  render();
+}
+
+function render() {
+  const L = labels(), areas = S.areas[cam];
+  $("overlay").innerHTML = areas.map((a, k) => {
+    const l = L[a.area_id], pts = a.quad.map(p => p.join(",")).join(" ");
+    const cx = a.quad.reduce((s, p) => s + p[0], 0) / 4, cy = a.quad.reduce((s, p) => s + p[1], 0) / 4;
+    const cls = [k === sel && "sel", !l.planogram_compliant && "wrong"].filter(Boolean).join(" ");
+    return `<polygon data-k="${k}" class="${cls}" points="${pts}" fill="${COLORS[l.stock_level]}"
+              stroke="${l.planogram_compliant ? COLORS[l.stock_level] : ""}"/>
+            <text x="${Math.min(Math.max(cx, 15), 1265)}" y="${Math.min(Math.max(cy, 15), 705)}">${a.area_id.split("_")[1]}${l.planogram_compliant ? "" : "✗"}</text>`;
+  }).join("");
+  $("list").innerHTML = areas.map((a, k) => {
+    const l = L[a.area_id];
+    return `<div class="area ${k === sel ? "sel" : ""}" data-k="${k}">
+      <div class="name">${a.product_name}</div>
+      <div class="id">${a.area_id} · product ${a.product_id}</div>
+      <div class="row">${Object.keys(LEVELS).map(s =>
+        `<button class="${s} ${l.stock_level === s ? "on" : ""}" data-act="stock" data-v="${s}">${s}</button>`).join("")}</div>
+      <div class="row">
+        <button class="ok ${l.planogram_compliant ? "on" : ""}" data-act="comp" data-v="1">✓ right product</button>
+        <button class="bad ${l.planogram_compliant ? "" : "on"}" data-act="comp" data-v="0">✗ wrong product</button>
+      </div></div>`;
+  }).join("");
+  const r = isReviewed(cam, img);
+  $("reviewedBtn").textContent = r ? "✓ Reviewed" : "Not reviewed";
+  $("reviewedBtn").classList.toggle("on", r);
+  const total = Object.keys(S.frames).reduce((n, c) => n + images(c).length, 0);
+  const done = Object.values(S.reviewed).reduce((n, l) => n + l.length, 0);
+  const camDone = (S.reviewed[cam] || []).length;
+  $("progress").textContent = `camera ${camDone}/${images(cam).length} · all ${done}/${total} images reviewed`;
+  $("list").children[sel]?.scrollIntoView({ block: "nearest" });
+  drawZoom();
+}
+
+function drawZoom() {
+  const crop = S.frames[cam][img].crops[S.areas[cam][sel]?.area_id];
+  if (crop) $("zoom").src = fileUrl(crop); else $("zoom").removeAttribute("src");
+}
+
+function setLabel(k, patch) {
+  const id = S.areas[cam][k].area_id, l = { ...labels()[id], ...patch };
+  l.stock_value = LEVELS[l.stock_level];
+  labels()[id] = { planogram_compliant: l.planogram_compliant, stock_level: l.stock_level, stock_value: l.stock_value };
+  sel = k; render(); scheduleSave();
+}
+
+function setReviewed(on) {
+  const list = new Set(S.reviewed[cam] || []);
+  on ? list.add(img) : list.delete(img);
+  S.reviewed[cam] = [...list].sort();
+  $("img").selectedOptions[0].text = $("img").selectedOptions[0].text.replace(/^[✓·]/, on ? "✓" : "·");
+  render(); scheduleSave();
+}
+
+function scheduleSave() {
+  $("status").textContent = "unsaved…";
+  clearTimeout(saveTimer);
+  const c = cam, i = img;
+  saveTimer = setTimeout(() => save(c, i), 400);
+  saveTimer.args = [c, i];
+}
+function flush() { if (saveTimer?.args) { clearTimeout(saveTimer); save(...saveTimer.args); saveTimer = null; } }
+async function save(c, i) {
+  try {
+    const r = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ camera_id: c, image_file: i, labels: S.annotations[c][i], reviewed: isReviewed(c, i) }) });
+    $("status").textContent = r.ok ? "saved ✓" : "save failed!";
+  } catch { $("status").textContent = "save failed (server down?)"; }
+}
+
+function step(d) {
+  const l = images(cam), k = l.indexOf(img) + d;
+  if (k >= 0 && k < l.length) openImage(cam, l[k]);
+}
+function nextUnreviewed() {
+  const cams = Object.keys(S.frames).sort();
+  const order = cams.slice(cams.indexOf(cam)).concat(cams.slice(0, cams.indexOf(cam)));
+  for (const c of order) {
+    const l = images(c), start = c === cam ? l.indexOf(img) + 1 : 0;
+    const f = l.slice(start).concat(c === cam ? l.slice(0, start) : []).find(f => !isReviewed(c, f));
+    if (f) return openImage(c, f);
+  }
+  $("status").textContent = "everything reviewed 🎉";
+}
+function copyPrevious() {
+  const l = images(cam), k = l.indexOf(img);
+  if (k < 1) return;
+  S.annotations[cam][img] = structuredClone(S.annotations[cam][l[k - 1]]);
+  render(); scheduleSave();
+}
+
+$("overlay").addEventListener("click", e => { const k = e.target.dataset.k; if (k != null) { sel = +k; render(); } });
+$("list").addEventListener("click", e => {
+  const card = e.target.closest(".area"); if (!card) return;
+  const k = +card.dataset.k, b = e.target.closest("button");
+  if (!b) { sel = k; return render(); }
+  if (b.dataset.act === "stock") setLabel(k, { stock_level: b.dataset.v });
+  else setLabel(k, { planogram_compliant: b.dataset.v === "1" });
+});
+$("cam").onchange = () => openImage($("cam").value, images($("cam").value)[0]);
+$("img").onchange = () => openImage(cam, $("img").value);
+$("prev").onclick = () => step(-1);
+$("next").onclick = () => step(1);
+$("copyPrev").onclick = copyPrevious;
+$("reviewedBtn").onclick = () => setReviewed(!isReviewed(cam, img));
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || e.ctrlKey || e.metaKey || e.altKey) return;
+  const n = S.areas[cam].length, key = e.key.toLowerCase();
+  const act = {
+    "1": () => setLabel(sel, { stock_level: "empty" }),
+    "2": () => setLabel(sel, { stock_level: "half" }),
+    "3": () => setLabel(sel, { stock_level: "full" }),
+    "x": () => setLabel(sel, { planogram_compliant: !labels()[S.areas[cam][sel].area_id].planogram_compliant }),
+    "arrowdown": () => { sel = (sel + 1) % n; render(); },
+    "arrowup": () => { sel = (sel - 1 + n) % n; render(); },
+    "tab": () => { sel = (sel + (e.shiftKey ? n - 1 : 1)) % n; render(); },
+    "arrowleft": () => step(-1),
+    "arrowright": () => step(1),
+    "r": () => setReviewed(!isReviewed(cam, img)),
+    "enter": () => { if (!isReviewed(cam, img)) setReviewed(true); nextUnreviewed(); },
+    "p": copyPrevious,
+    "h": () => $("overlay").classList.add("hidden"),
+  }[key];
+  if (act) { e.preventDefault(); act(); }
+});
+document.addEventListener("keyup", e => { if (e.key.toLowerCase() === "h") $("overlay").classList.remove("hidden"); });
+window.addEventListener("beforeunload", flush);
+load();
+</script>
+</body>
+</html>
