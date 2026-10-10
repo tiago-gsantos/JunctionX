@@ -65,3 +65,36 @@ def load_annotations(paths: list[str | Path]) -> dict:
                         raise ValueError(f"conflicting entries for {cam}/{image}/{area_id} (latest from {f})")
                     target[area_id] = entry
     return merged
+
+
+# Decision rules: turn model probabilities into the answer with the highest expected points.
+STOCK_LEVELS = ["empty", "half", "full"]  # index order used for stock probabilities
+STOCK_VALUES = [0, 0.5, 1]
+# STOCK_PAYOFF[predicted][true]: +1 correct, -2 below the real stock, -3 above it.
+STOCK_PAYOFF = [[1, -2, -2],
+                [-3, 1, -2],
+                [-3, -3, 1]]
+
+
+def expected_stock_points(probs):
+    """probs: (n, 3) P(empty, half, full) -> (n, 3) expected points of answering each level."""
+    import numpy as np
+    return np.asarray(probs) @ np.asarray(STOCK_PAYOFF, dtype=float).T
+
+
+def decide_stock(probs):
+    """Index of the stock level with the highest expected points (leans low when unsure)."""
+    return expected_stock_points(probs).argmax(axis=1)
+
+
+def decide_compliance(p_compliant):
+    """Compliance is symmetric (+1 right, -2 wrong either way), so answer the more likely option."""
+    import numpy as np
+    return np.asarray(p_compliant) >= 0.5
+
+
+def task_points(result: ScoreResult) -> tuple[int, int]:
+    """(compliance points, stock points) of a ScoreResult."""
+    c = result.counts
+    return (c["id_correct"] * ID_POINTS["id_correct"] + c["id_wrong"] * ID_POINTS["id_wrong"],
+            sum(c[k] * v for k, v in STOCK_POINTS.items()))
