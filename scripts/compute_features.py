@@ -31,6 +31,71 @@ from shelfmon.zeroshot import (ZEROSHOT_FEATURES, build_text_bank, load_descript
 KEYS = ["camera_id", "image_file", "area_id"]
 
 
+def compute_features(manifest: Path, planogram: dict, features_dir: Path, frame_size=(1280, 720),
+                     references: Path | None = None, save_references_to: Path | None = None, bank=None,
+                     product_prompts: Path = Path("analysis/product_prompts.csv"),
+                     products: Path = Path("analysis/products.csv"), progress=None) -> Path:
+    """Write <features_dir>/handcrafted.csv for the manifest and return its path.
+
+    references: compare against these saved references; without them, new references are built from
+    this manifest (and saved to save_references_to when given). bank: a prebuilt zeroshot TextBank;
+    built with SigLIP when None and needed.
+    progress(done, total) is optional.
+    """
+    with open(manifest, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    areas = {a.area_id: a for cam_areas in planogram.values() for a in cam_areas}
+    camera_products = {cam: {a.product_id for a in cam_areas} for cam, cam_areas in planogram.items()}
+    embeddings = {bb: np.load(features_dir / f"{bb}.npy") for bb in REFERENCE_BACKBONES
+                  if (features_dir / f"{bb}.npy").exists()}
+    for bb, e in embeddings.items():
+        assert len(e) == len(rows), f"{bb}.npy has {len(e)} rows, manifest has {len(rows)}; re-run embed_crops.py"
+    refs = load_references(references) if references else {}
+    if references and set(next(iter(refs.values())).typical_emb) != set(embeddings):
+        raise ValueError(f"references use backbones {sorted(next(iter(refs.values())).typical_emb)}, "
+                         f"features dir has {sorted(embeddings)}")
+
+    if bank is None and "siglip2" in embeddings:
+        from shelfmon.embeddings import Encoder
+        bank = build_text_bank(Encoder("siglip2"), load_descriptions(product_prompts), load_kinds(products))
+    if "siglip2" not in embeddings:
+        bank = None
+
+    by_area = defaultdict(list)
+    for i, r in enumerate(rows):
+        by_area[r["area_id"]].append(i)
+
+    results = [None] * len(rows)
+    for n, (area_id, idxs) in enumerate(by_area.items(), 1):
+        crops = [cv2.imread(str(manifest.parent / rows[i]["crop_path"])) for i in idxs]
+        mask = area_mask(areas[area_id], tuple(frame_size), crops[0].shape[0])
+        ab = np.array([[crop_features(c, mask)[f] for f in AB_FEATURES] for c in crops])
+        if not references:
+            refs[area_id] = build_reference(crops, ab, {bb: e[idxs] for bb, e in embeddings.items()},
+                                            [rows[i]["image_file"] for i in idxs])
+        elif area_id not in refs:
+            raise ValueError(f"no saved reference for area {area_id}")
+        for k, i in enumerate(idxs):
+            rel = relative_features(ab[k], crops[k], {bb: e[i] for bb, e in embeddings.items()}, refs[area_id], mask)
+            results[i] = dict(zip(AB_FEATURES, ab[k])) | rel
+            if bank:
+                results[i] |= zeroshot_features(embeddings["siglip2"][i], rows[i]["product_id"],
+                                                camera_products[rows[i]["camera_id"]], bank)
+        if progress:
+            progress(n, len(by_area))
+
+    if not references and save_references_to:
+        save_references(refs, save_references_to)
+    out = features_dir / "handcrafted.csv"
+    columns = AB_FEATURES + relative_feature_names(list(embeddings)) + (ZEROSHOT_FEATURES if bank else [])
+    with open(out, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=KEYS + columns)
+        writer.writeheader()
+        for r, feats in zip(rows, results):
+            writer.writerow({k: r[k] for k in KEYS} | {c: f"{feats[c]:.4f}" for c in columns})
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", type=Path, default=Path("data/areas/manifest.csv"))
@@ -43,60 +108,17 @@ def main():
     ap.add_argument("--products", type=Path, default=Path("analysis/products.csv"))
     args = ap.parse_args()
 
-    with open(args.manifest, encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    planogram = load_planogram(args.planogram)
-    areas = {a.area_id: a for cam_areas in planogram.values() for a in cam_areas}
-    camera_products = {cam: {a.product_id for a in cam_areas} for cam, cam_areas in planogram.items()}
-    embeddings = {bb: np.load(args.features_dir / f"{bb}.npy") for bb in REFERENCE_BACKBONES
-                  if (args.features_dir / f"{bb}.npy").exists()}
-    for bb, e in embeddings.items():
-        assert len(e) == len(rows), f"{bb}.npy has {len(e)} rows, manifest has {len(rows)}; re-run embed_crops.py"
-    refs = load_references(args.references) if args.references else {}
-    if args.references and set(next(iter(refs.values())).typical_emb) != set(embeddings):
-        sys.exit(f"error: references use backbones {sorted(next(iter(refs.values())).typical_emb)}, "
-                 f"features dir has {sorted(embeddings)}")
-
-    bank = None
-    if "siglip2" in embeddings:
-        from shelfmon.embeddings import Encoder
-        bank = build_text_bank(Encoder("siglip2"), load_descriptions(args.product_prompts), load_kinds(args.products))
-
-    by_area = defaultdict(list)
-    for i, r in enumerate(rows):
-        by_area[r["area_id"]].append(i)
-
-    results = [None] * len(rows)
-    for n, (area_id, idxs) in enumerate(by_area.items(), 1):
-        crops = [cv2.imread(str(args.manifest.parent / rows[i]["crop_path"])) for i in idxs]
-        mask = area_mask(areas[area_id], tuple(args.frame_size), crops[0].shape[0])
-        ab = np.array([[crop_features(c, mask)[f] for f in AB_FEATURES] for c in crops])
-        if not args.references:
-            refs[area_id] = build_reference(crops, ab, {bb: e[idxs] for bb, e in embeddings.items()},
-                                            [rows[i]["image_file"] for i in idxs])
-        elif area_id not in refs:
-            sys.exit(f"error: no saved reference for area {area_id}")
-        for k, i in enumerate(idxs):
-            rel = relative_features(ab[k], crops[k], {bb: e[i] for bb, e in embeddings.items()}, refs[area_id], mask)
-            results[i] = dict(zip(AB_FEATURES, ab[k])) | rel
-            if bank:
-                results[i] |= zeroshot_features(embeddings["siglip2"][i], rows[i]["product_id"],
-                                                camera_products[rows[i]["camera_id"]], bank)
-        print(f"\r{n}/{len(by_area)} areas", end="", flush=True)
+    try:
+        out = compute_features(args.manifest, load_planogram(args.planogram), args.features_dir, args.frame_size,
+                               args.references, args.save_references, product_prompts=args.product_prompts,
+                               products=args.products,
+                               progress=lambda done, total: print(f"\r{done}/{total} areas", end="", flush=True))
+    except ValueError as e:
+        sys.exit(f"\nerror: {e}")
     print()
-
     if not args.references:
-        save_references(refs, args.save_references)
         print(f"wrote {args.save_references} (+ .json)")
-    out = args.features_dir / "handcrafted.csv"
-    columns = AB_FEATURES + relative_feature_names(list(embeddings)) + (ZEROSHOT_FEATURES if bank else [])
-    with open(out, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=KEYS + columns)
-        writer.writeheader()
-        for r, feats in zip(rows, results):
-            writer.writerow({k: r[k] for k in KEYS} | {c: f"{feats[c]:.4f}" for c in columns})
-    print(f"wrote {out} ({len(rows)} rows, {len(columns)} features)")
-
+    print(f"wrote {out}")
 
 if __name__ == "__main__":
     main()

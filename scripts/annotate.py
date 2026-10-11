@@ -16,25 +16,18 @@ Output:
 import argparse
 import csv
 import json
-import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shelfmon.io import write_json  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
 
 DEFAULT = {"planogram_compliant": True, "stock_level": "half", "stock_value": 0.5}
 STOCK_VALUES = {"empty": 0, "half": 0.5, "full": 1}
 HTML = Path(__file__).with_name("annotate.html")
-
-
-def write_json(path: Path, data) -> None:
-    """Write atomically so a crash mid-save never corrupts the labels."""
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def load_manifest(areas_dir: Path) -> dict:

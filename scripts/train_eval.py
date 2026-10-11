@@ -15,6 +15,9 @@ below a threshold set on the training rounds, for at least --override-votes back
 area is predicted empty. It catches swaps the compliance model never saw in that area; with
 --recogniser-only it is the whole compliance answer (no memory of the day's swaps). --cv camera holds
 out one whole camera per round instead (runs tagged @camera).
+
+--save-model also fits the model on every labelled crop and saves it (with the --override album and
+thresholds, and confidence thresholds learned from the cross-validated probabilities) for scripts/predict.py.
 """
 import argparse
 import json
@@ -33,6 +36,8 @@ from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shelfmon.dataset import camera_folds, load_table  # noqa: E402
+from shelfmon.model import (confidence_level, confidence_thresholds, save_bundle, task_confidence,  # noqa: E402
+                            unit, wrong_probability)
 from shelfmon.prototypes import album_mask, build_prototypes, camera_products, prototype_margins  # noqa: E402
 from shelfmon.scoring import (STOCK_LEVELS, STOCK_VALUES, decide_compliance, decide_stock,  # noqa: E402
                               score, task_points)
@@ -41,11 +46,7 @@ from shelfmon.zeroshot import load_kinds  # noqa: E402
 BASELINE = 1598  # always compliant + always full, on all 1962 labelled areas
 EMBEDDINGS = ["siglip2", "dinov2", "dinov3", "radio"]
 PROTOS = [f"proto_{bb}" for bb in EMBEDDINGS]
-OVERRIDE_BACKBONES = ["dinov2", "radio", "siglip2"]  # album margins that vote in --override proto
-
-
-def unit(x: np.ndarray) -> np.ndarray:
-    return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
+OVERRIDE_BACKBONES = ["dinov3", "radio", "siglip2"]  # album margins that vote in --override proto
 
 
 def album_margins(table, backbone: str, train: np.ndarray, kinds: dict[str, str]) -> np.ndarray:
@@ -144,6 +145,24 @@ def to_predictions(rows, stock_idx, compliant) -> dict:
     return out
 
 
+def fit_final(table, kind: str, features: list[str], pca_dims: int) -> dict:
+    """Stock + compliance models fitted on every labelled crop (PCA too), as in one CV round."""
+    parts, pcas = [], {}
+    for name in features:
+        if name == "handcrafted":
+            parts.append(table.handcrafted)
+            continue
+        x, pcas[name] = unit(table.embeddings[name]), None
+        if pca_dims:
+            pcas[name] = PCA(n_components=min(pca_dims, *x.shape), random_state=0).fit(x)
+            x = pcas[name].transform(x)
+        parts.append(x)
+    x = np.hstack(parts)
+    return {"model": kind, "features": features, "pca": pcas, "handcrafted_names": table.handcrafted_names,
+            "stock_model": make_model(kind).fit(x, table.stock),
+            "compliance_model": make_model(kind).fit(x, table.compliant.astype(int))}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=["logreg", "hgb", "knn"], required=True)
@@ -168,6 +187,8 @@ def main():
     ap.add_argument("--products", type=Path, default=Path("analysis/products.csv"), help="generic type per product")
     ap.add_argument("--leaderboard", type=Path, default=Path("results/LEADERBOARD.md"))
     ap.add_argument("--no-log", action="store_true", help="don't append to the leaderboard")
+    ap.add_argument("--save-model", type=Path, help="also fit on all labels and save the model here "
+                    "(e.g. data/models/final.joblib)")
     ap.add_argument("--shared-references", action="store_true",
                     help="use group C features built from all photos (slightly optimistic; the old protocol)")
     args = ap.parse_args()
@@ -176,6 +197,9 @@ def main():
     name = args.name or (f"{args.model}_{'+'.join(args.features)}"
                          + (f"+override-{args.override}" + ("-only" if args.recogniser_only else "") if args.override else "")
                          + ("@shared" if args.shared_references else "") + ("@camera" if args.cv == "camera" else ""))
+    if args.save_model and (args.model == "knn" or args.recogniser_only or args.override == "text"
+                            or any(f in PROTOS for f in args.features)):
+        ap.error("--save-model supports logreg/hgb on handcrafted + embeddings, optionally with --override proto")
     warnings.filterwarnings("ignore", category=UserWarning)
 
     album_backbones = {f.removeprefix("proto_") for f in args.features if f in PROTOS}
@@ -245,10 +269,40 @@ def main():
     pred_path = Path("data/predictions") / f"{name}.json"
     pred_path.parent.mkdir(parents=True, exist_ok=True)
     pred_path.write_text(json.dumps(to_predictions(table.rows, stock_idx, compliant), indent=1), encoding="utf-8")
-    # Out-of-round probabilities in manifest order, for error analysis (scripts/error_gallery.py).
+    # Out-of-round probabilities in manifest order, for error analysis.
     np.savez(pred_path.with_suffix(".proba.npz"), p_stock=p_stock, p_compliant=p_comp, override_flagged=flagged,
              keys=np.array([[r[k] for k in ("camera_id", "image_file", "area_id")] for r in table.rows]))
     print(f"\nwrote {pred_path} (+ .proba.npz)")
+
+    if args.save_model:
+        override = None
+        if args.override == "proto":  # album from every labelled photo, thresholds as in each CV round
+            product_ids = np.array([r["product_id"] for r in table.rows])
+            new = flagged & model_compliant
+            override = {"backbones": OVERRIDE_BACKBONES, "votes": args.override_votes, "albums": {}, "thresholds": {},
+                        "precision": float((~table.compliant[new]).mean()) if new.any() else 0.5}
+            for bb in OVERRIDE_BACKBONES:
+                protos = build_prototypes(table.embeddings[bb], product_ids, album_rows)
+                margin = prototype_margins(table.embeddings[bb], table.rows, protos, kinds, camera_products(table.rows))[:, 0]
+                override["albums"][bb] = protos
+                override["thresholds"][bb] = float(np.nanquantile(margin[album_rows], args.override_quantile))
+            print(f"\noverride precision when it overrules the model (CV): {override['precision']:.0%} of {new.sum()}")
+        p_wrong = wrong_probability(p_comp, flagged, override["precision"] if override else 0.0)
+        task_kinds, conf = task_confidence(p_stock, p_wrong, stock_idx, compliant)
+        needed = {"restock": table.stock < 2, "wrong_product": ~table.compliant}
+        thresholds = {k: confidence_thresholds(conf[task_kinds == k], needed[k][task_kinds == k]) for k in needed}
+        print("\nconfidence thresholds on P(task needed), from the cross-validated tasks:")
+        for k, t in thresholds.items():
+            sel = task_kinds == k
+            levels = np.array([confidence_level(c, t) for c in conf[sel]])
+            stats = ", ".join(f"{lvl} {np.sum(levels == lvl)} ({needed[k][sel][levels == lvl].mean():.0%} needed)"
+                              for lvl in ["high", "medium", "low"] if np.any(levels == lvl))
+            print(f"  {k:<14} high >= {t['high']:.2f}, low <= {t['low']:.2f}: {stats}")
+        bundle = fit_final(table, args.model, args.features, args.pca)
+        bundle |= {"name": name, "confidence": thresholds, "override": override, "cv_total": best.total, "cv_max": best.max,
+                   "created": datetime.now().isoformat(timespec="seconds")}
+        save_bundle(bundle, args.save_model)
+        print(f"wrote {args.save_model}")
 
     if not args.no_log:
         comp_pts, stock_pts = task_points(best)
