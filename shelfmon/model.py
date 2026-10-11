@@ -1,4 +1,4 @@
-"""The final, saved model: what scripts/train_eval.py --save-model writes and scripts/predict.py loads.
+"""The final, saved model: what scripts/train_eval.py writes and scripts/predict.py loads.
 
 A bundle holds the fitted stock and compliance classifiers, the PCA of each embedding, the feature
 order, and the confidence thresholds learned from the cross-validation probabilities.

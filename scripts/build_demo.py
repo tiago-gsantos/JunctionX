@@ -6,9 +6,9 @@ held-out photos in the demo gives honest predictions and confidences:
     data/demo/photos/<camera_id>/<ts>.jpg     the held-out photos: upload this folder in the demo
     data/demo/features/                       embeddings, handcrafted.csv, group_c_cv.npz of the training photos
     data/demo/references/references.npz       "usual shelf" references built from the training photos
-    data/models/demo.joblib                   the demo model (same recipe as data/models/final.joblib)
+    data/models/demo.joblib                   the demo model (same recipe as models/final.joblib)
 It also clears data/demo/runs, so the demo app starts with no data. Needs the full pipeline outputs
-(data/areas/manifest.csv and data/features/*.npy). The real model (final.joblib) is not touched.
+(data/areas/manifest.csv and data/features/*.npy). The real model (models/final.joblib) is not touched.
 
     .venv/bin/python scripts/build_demo.py      # ~4 min
     .venv/bin/python app/server.py --demo
@@ -31,7 +31,6 @@ from extract_areas import MANIFEST_FIELDS  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
 from shelfmon.references import REFERENCE_BACKBONES  # noqa: E402
 
-MODEL_ARGS = ["--model", "hgb", "--features", "handcrafted", "radio", "--override", "proto"]  # as final.joblib
 BACKBONES = sorted(set(REFERENCE_BACKBONES) | {"radio", "dinov3", "siglip2"})  # features + album votes
 
 
@@ -77,9 +76,9 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/compute_cv_references.py"), "--manifest", str(train_manifest),
                     "--features-dir", str(features)], check=True, stdout=subprocess.DEVNULL)
     print("training the demo model ...")
-    subprocess.run([sys.executable, str(ROOT / "scripts/train_eval.py"), *MODEL_ARGS, "--manifest", str(train_manifest),
-                    "--features-dir", str(features), "--name", "demo", "--no-log",
-                    "--save-model", str(ROOT / "data/models/demo.joblib")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "scripts/train_eval.py"), "--manifest", str(train_manifest),
+                    "--features-dir", str(features), "--name", "demo",
+                    "--out", str(ROOT / "data/models/demo.joblib")], check=True)
     print(f"\ndemo ready: upload {args.out / 'photos'} in  .venv/bin/python app/server.py --demo")
 
 

@@ -9,8 +9,6 @@ never enter the album. Each crop is compared with its expected product's prototy
 Both are NaN when the expected product has no prototype. Unlike the SigLIP text margins (group D),
 this compares images with images, so packaging and colour of the real products count.
 """
-from pathlib import Path
-
 import numpy as np
 
 PROTO_FEATURES = ["margin_camera", "margin_kind"]
@@ -61,17 +59,3 @@ def prototype_margins(emb: np.ndarray, rows: list[dict], protos: dict[str, np.nd
             out[i, 1] = expected - sims[i, other_kind].max()
     return out
 
-
-def save_prototypes(albums: dict[str, dict[str, np.ndarray]], path: Path) -> None:
-    """albums: backbone -> product id -> prototype. One .npz with keys '<backbone>__<product id>'."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, **{f"{bb}__{pid}": v for bb, protos in albums.items() for pid, v in protos.items()})
-
-
-def load_prototypes(path: Path) -> dict[str, dict[str, np.ndarray]]:
-    data = np.load(path)
-    albums = {}
-    for key in data.files:
-        bb, pid = key.split("__", 1)
-        albums.setdefault(bb, {})[pid] = data[key]
-    return albums

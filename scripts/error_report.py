@@ -137,7 +137,7 @@ big.onclick = () => big.style.display = "none";
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--cv-run", default="hgb_handcrafted+radio+override-proto", help="name in data/predictions/")
+    ap.add_argument("--cv-run", default="final", help="name in data/predictions/ (scripts/train_eval.py --name)")
     ap.add_argument("--out", type=Path, default=ROOT / "data/analysis/errors.html")
     args = ap.parse_args()
 

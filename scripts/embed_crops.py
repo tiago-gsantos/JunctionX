@@ -1,7 +1,7 @@
 """Embed every area crop in the manifest with a frozen pretrained model.
 
 Writes data/features/<model>.npy (one row per manifest row, same order) and <model>.json (metadata).
-Models: see shelfmon.embeddings.BACKBONES (siglip2, dinov2, dinov3, radio).
+Models: see shelfmon.embeddings.BACKBONES (siglip2, dinov3, radio).
 """
 import argparse
 import csv
