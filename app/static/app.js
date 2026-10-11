@@ -139,7 +139,7 @@ function card(t) {
   return `<div class="task${t.task_id === state.selected ? " selected" : ""}${t.done ? " done" : ""}" data-id="${t.task_id}">
     <div class="task-top"><span class="status pill status-${t.status}">${esc(t.status_label)}</span></div>
     <span class="conf conf-${t.confidence}" title="How sure the AI is that this needs doing">${t.confidence_pct === null
-      ? "Set by staff" : `<i class="bars" aria-hidden="true"><b></b><b></b><b></b></i><strong>${t.confidence_pct}%</strong> confidence`}</span>
+      ? "Corrected by staff" : `<i class="bars" aria-hidden="true"><b></b><b></b><b></b></i><strong>${t.confidence_pct}%</strong> confidence`}</span>
     <div class="task-title">${esc(title)}</div>
     <div class="task-meta">${esc(meta.filter(Boolean).join(" · "))}</div>
     ${action}

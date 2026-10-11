@@ -133,7 +133,7 @@ def build_dashboard(planogram: dict, predictions: dict, details: dict, threshold
                 "since": since.strftime("%H:%M"),
                 "since_ts": int(since.timestamp()),
                 "confidence": confidence,
-                "confidence_pct": None if conf is None else round(100 * conf),  # None: set by staff
+                "confidence_pct": None if conf is None else round(100 * conf),  # None: corrected by staff
                 "done": area.area_id in done,
             })
         cameras.append({"camera_id": cam, "photo_time": when.strftime("%H:%M"),
