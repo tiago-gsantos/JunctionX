@@ -8,7 +8,7 @@
     predictions.json      official submission format, checked with shelfmon.verify
     details.json          {camera: {image: {area_id: {p_stock, p_compliant, p_wrong, override}}}} for the app
                           (p_wrong: P(non-compliant) after the product-album override, if the model has one)
-Needs data/models/final.joblib (scripts/train_eval.py --save-model) and data/references/.
+Needs models/final.joblib and models/references.npz (committed; rebuilt by train_eval.py and compute_features.py).
 """
 import argparse
 import csv
@@ -44,8 +44,8 @@ def encoder(name: str):
     return _encoders[name]
 
 
-def run_pipeline(images: Path, out: Path, model: Path = ROOT / "data/models/final.joblib",
-                 references: Path = ROOT / "data/references/references.npz",
+def run_pipeline(images: Path, out: Path, model: Path = ROOT / "models/final.joblib",
+                 references: Path = ROOT / "models/references.npz",
                  planogram_path: Path = ROOT / "planogram.json", progress=None) -> dict:
     """Write predictions.json + details.json for every photo under images; returns the predictions.
 
@@ -127,8 +127,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--images", type=Path, required=True, help="directory laid out as <camera_id>/<timestamp>.jpg")
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--model", type=Path, default=ROOT / "data/models/final.joblib")
-    ap.add_argument("--references", type=Path, default=ROOT / "data/references/references.npz")
+    ap.add_argument("--model", type=Path, default=ROOT / "models/final.joblib")
+    ap.add_argument("--references", type=Path, default=ROOT / "models/references.npz")
     args = ap.parse_args()
 
     start = time.time()

@@ -46,8 +46,8 @@ from shelfmon.tasks import (apply_corrections, build_dashboard, correction_entry
                             load_display_names)
 
 STATIC = Path(__file__).resolve().parent / "static"
-MODEL = ROOT / "data/models/final.joblib"
-REFERENCES = ROOT / "data/references/references.npz"
+MODEL = ROOT / "models/final.joblib"
+REFERENCES = ROOT / "models/references.npz"
 RUNS = ROOT / "data/runs"
 DEMO = {"model": ROOT / "data/models/demo.joblib", "references": ROOT / "data/demo/references/references.npz",
         "runs": ROOT / "data/demo/runs"}
@@ -261,8 +261,7 @@ def main():
     args = ap.parse_args()
     if args.demo:
         args.model, args.references, args.runs = DEMO["model"], DEMO["references"], DEMO["runs"]
-    for path, how in [(args.model, "scripts/train_eval.py --model hgb --features handcrafted radio --override proto "
-                                   "--save-model data/models/final.joblib --no-log"),
+    for path, how in [(args.model, "scripts/train_eval.py"),
                       (args.references, "scripts/compute_features.py")]:
         if not path.exists():
             sys.exit(f"{path} not found: run {'scripts/build_demo.py' if args.demo else how}")

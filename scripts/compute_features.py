@@ -103,7 +103,7 @@ def main():
     ap.add_argument("--frame-size", type=int, nargs=2, default=(1280, 720), metavar=("W", "H"))
     ap.add_argument("--features-dir", type=Path, default=Path("data/features"))
     ap.add_argument("--references", type=Path, help="load these saved references instead of building new ones")
-    ap.add_argument("--save-references", type=Path, default=Path("data/references/references.npz"))
+    ap.add_argument("--save-references", type=Path, default=Path("models/references.npz"))
     ap.add_argument("--product-prompts", type=Path, default=Path("analysis/product_prompts.csv"))
     ap.add_argument("--products", type=Path, default=Path("analysis/products.csv"))
     args = ap.parse_args()
