@@ -3,6 +3,7 @@
     .venv/bin/python app/server.py                 # then open http://localhost:8000
     .venv/bin/python app/server.py --load <dir>    # also process a photo folder at start-up
     .venv/bin/python app/server.py --demo          # demo model + its own results folder (scripts/build_demo.py)
+    .venv/bin/python app/server.py --dinov2        # model built with DINOv2 (no access to the gated DINOv3 needed)
 
 Photos are uploaded as a folder laid out <camera_id>/<unix_timestamp>.jpg (or a .zip of one). The
 newest upload replaces the previous one; it lives in data/runs/current/ (photos, crops, features,
@@ -37,7 +38,7 @@ from urllib.parse import quote, unquote
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-from predict import run_pipeline  # noqa: E402
+from predict import DINOV2, run_pipeline  # noqa: E402
 
 from shelfmon.io import write_json  # noqa: E402
 from shelfmon.model import load_bundle  # noqa: E402
@@ -258,7 +259,10 @@ def main():
     ap.add_argument("--runs", type=Path, default=RUNS, help="where uploads and their results are kept")
     ap.add_argument("--demo", action="store_true", help="use the demo model, references and results folder "
                     "(build them with scripts/build_demo.py)")
+    ap.add_argument("--dinov2", action="store_true", help="use the model built with DINOv2 (no DINOv3 access needed)")
     args = ap.parse_args()
+    if args.dinov2:
+        args.model, args.references = DINOV2["model"], DINOV2["references"]
     if args.demo:
         args.model, args.references, args.runs = DEMO["model"], DEMO["references"], DEMO["runs"]
     for path, how in [(args.model, "scripts/train_eval.py"),

@@ -16,7 +16,15 @@ from shelfmon.features import AB_FEATURES
 
 FULLEST_BY = "edge_frac_coarse"
 PIXEL_BLUR = (5, 5)  # softens JPEG noise and sub-pixel jitter before comparing pixels
-REFERENCE_BACKBONES = ["siglip2", "dinov3"]  # embedding distances use these (when their .npy exists)
+DINO_CHOICES = ("dinov3", "dinov2")  # dinov2: open fallback for users without access to the gated DINOv3
+
+
+def reference_backbones(dino: str = "dinov3") -> list[str]:
+    """Embeddings whose distances to the references become features (when their .npy exists)."""
+    return ["siglip2", dino]
+
+
+REFERENCE_BACKBONES = reference_backbones()
 
 
 @dataclass

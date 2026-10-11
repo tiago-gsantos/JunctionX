@@ -21,6 +21,8 @@ class Backbone:
 
 BACKBONES = {
     "siglip2": Backbone("siglip2", "google/siglip2-base-patch16-256", "siglip", 64),
+    # Open fallback for users without access to DINOv3 (models/dinov2/ is built with it).
+    "dinov2": Backbone("dinov2", "facebook/dinov2-base", "hf_pooler", 64),
     # Gated on Hugging Face (Meta approves access manually); needs `hf auth login` once granted.
     "dinov3": Backbone("dinov3", "facebook/dinov3-vitb16-pretrain-lvd1689m", "hf_pooler", 64),
     "radio": Backbone("radio", "nvidia/C-RADIOv4-SO400M", "radio", 16),

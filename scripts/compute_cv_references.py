@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shelfmon.dataset import KEYS, time_folds  # noqa: E402
 from shelfmon.features import AB_FEATURES, area_mask  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
-from shelfmon.references import (REFERENCE_BACKBONES, build_reference, relative_feature_names,  # noqa: E402
+from shelfmon.references import (DINO_CHOICES, build_reference, reference_backbones, relative_feature_names,  # noqa: E402
                                  relative_features)
 
 
@@ -28,6 +28,7 @@ def main():
     ap.add_argument("--planogram", type=Path, default=Path("planogram.json"))
     ap.add_argument("--frame-size", type=int, nargs=2, default=(1280, 720), metavar=("W", "H"))
     ap.add_argument("--features-dir", type=Path, default=Path("data/features"))
+    ap.add_argument("--dino", choices=DINO_CHOICES, default="dinov3", help="dinov2: the open fallback model")
     args = ap.parse_args()
 
     with open(args.manifest, encoding="utf-8") as f:
@@ -37,7 +38,7 @@ def main():
     if [tuple(r[k] for k in KEYS) for r in feats] != [tuple(r[k] for k in KEYS) for r in rows]:
         sys.exit("error: handcrafted.csv rows don't match the manifest; re-run compute_features.py")
     ab_all = np.array([[float(r[c]) for c in AB_FEATURES] for r in feats])
-    embeddings = {bb: np.load(args.features_dir / f"{bb}.npy") for bb in REFERENCE_BACKBONES
+    embeddings = {bb: np.load(args.features_dir / f"{bb}.npy") for bb in reference_backbones(args.dino)
                   if (args.features_dir / f"{bb}.npy").exists()}
     areas = {a.area_id: a for cam_areas in load_planogram(args.planogram).values() for a in cam_areas}
     folds = time_folds(rows)

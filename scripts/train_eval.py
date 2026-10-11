@@ -27,6 +27,7 @@ from shelfmon.dataset import load_table  # noqa: E402
 from shelfmon.model import (confidence_level, confidence_thresholds, save_bundle, task_confidence,  # noqa: E402
                             unit, wrong_probability)
 from shelfmon.prototypes import album_mask, build_prototypes, camera_products, prototype_margins  # noqa: E402
+from shelfmon.references import DINO_CHOICES  # noqa: E402
 from shelfmon.scoring import (STOCK_LEVELS, STOCK_VALUES, decide_compliance, decide_stock,  # noqa: E402
                               score, task_points)
 from shelfmon.zeroshot import load_kinds  # noqa: E402
@@ -34,7 +35,7 @@ from shelfmon.zeroshot import load_kinds  # noqa: E402
 BASELINE = 1598  # always compliant + always full, on all 1962 labelled areas
 FEATURES = ["handcrafted", "radio"]  # handcrafted columns + embeddings (PCA) fed to the trees
 PCA_DIMS = 64
-ALBUM_BACKBONES = ["dinov3", "radio", "siglip2"]  # all three must agree to flag a wrong product
+ALBUM_BACKBONES = ["dinov3", "radio", "siglip2"]  # all three must agree to flag a wrong product (--dino swaps dinov3)
 ALBUM_QUANTILE = 0.005  # threshold = this quantile of the margins of correct training photos
 
 
@@ -124,10 +125,13 @@ def main():
     ap.add_argument("--products", type=Path, default=Path("analysis/products.csv"), help="generic type per product")
     ap.add_argument("--out", type=Path, default=Path("models/final.joblib"), help="where to save the trained model")
     ap.add_argument("--name", default="final", help="name of the cross-validated predictions in data/predictions/")
+    ap.add_argument("--dino", choices=DINO_CHOICES, default="dinov3",
+                    help="dinov2: open fallback (build its features with compute_features.py --dino dinov2)")
     args = ap.parse_args()
+    album_backbones = [args.dino if bb == "dinov3" else bb for bb in ALBUM_BACKBONES]
     warnings.filterwarnings("ignore", category=UserWarning)
 
-    backbones = sorted({f for f in FEATURES if f != "handcrafted"} | set(ALBUM_BACKBONES))
+    backbones = sorted({f for f in FEATURES if f != "handcrafted"} | set(album_backbones))
     table = load_table(args.manifest, args.labels, args.features_dir, backbones)
     kinds = load_kinds(args.products)
     album_rows = album_mask(table.compliant, table.stock)
@@ -140,7 +144,7 @@ def main():
         x_tr, x_te = build_matrices(table, train, fold)
         p_stock[test_idx] = fit_predict_proba(x_tr, table.stock[train], x_te, 3)
         p_comp[test_idx] = fit_predict_proba(x_tr, table.compliant[train].astype(int), x_te, 2)[:, 1]
-        margins = [album_margins(table, bb, train, kinds)[:, 0] for bb in ALBUM_BACKBONES]  # margin_camera
+        margins = [album_margins(table, bb, train, kinds)[:, 0] for bb in album_backbones]  # margin_camera
         flagged[test_idx] = album_flags(margins, train, album_rows)[test_idx]
 
     stock_idx = decide_stock(p_stock)
@@ -174,9 +178,9 @@ def main():
 
     # Final model: album from every labelled photo, thresholds as in each CV round.
     product_ids = np.array([r["product_id"] for r in table.rows])
-    album = {"backbones": ALBUM_BACKBONES, "votes": len(ALBUM_BACKBONES), "albums": {}, "thresholds": {},
+    album = {"backbones": album_backbones, "votes": len(album_backbones), "albums": {}, "thresholds": {},
              "precision": float(swap[new].mean()) if new.any() else 0.5}
-    for bb in ALBUM_BACKBONES:
+    for bb in album_backbones:
         protos = build_prototypes(table.embeddings[bb], product_ids, album_rows)
         margin = prototype_margins(table.embeddings[bb], table.rows, protos, kinds, camera_products(table.rows))[:, 0]
         album["albums"][bb] = protos

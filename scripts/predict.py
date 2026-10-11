@@ -9,6 +9,8 @@
     details.json          {camera: {image: {area_id: {p_stock, p_compliant, p_wrong, override}}}} for the app
                           (p_wrong: P(non-compliant) after the product-album override, if the model has one)
 Needs models/final.joblib and models/references.npz (committed; rebuilt by train_eval.py and compute_features.py).
+--dinov2 uses models/dinov2/ instead: the same model built with the open DINOv2, for users without access
+to the gated DINOv3.
 """
 import argparse
 import csv
@@ -30,6 +32,7 @@ from shelfmon.io import write_json  # noqa: E402
 from shelfmon.model import feature_matrix, load_bundle, predict_proba, wrong_probability  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
 from shelfmon.prototypes import prototype_margins  # noqa: E402
+from shelfmon.references import DINO_CHOICES  # noqa: E402
 from shelfmon.scoring import STOCK_LEVELS, STOCK_VALUES, decide_compliance, decide_stock  # noqa: E402
 from shelfmon.verify import verify  # noqa: E402
 from shelfmon.zeroshot import build_text_bank, load_descriptions, load_kinds  # noqa: E402
@@ -37,10 +40,18 @@ from shelfmon.zeroshot import build_text_bank, load_descriptions, load_kinds  # 
 _encoders = {}  # name -> Encoder, kept between runs when imported by the app
 
 
+DINOV2 = {"model": ROOT / "models/dinov2/final.joblib", "references": ROOT / "models/dinov2/references.npz"}
+
+
 def encoder(name: str):
     from shelfmon.embeddings import Encoder
     if name not in _encoders:
-        _encoders[name] = Encoder(name)
+        try:
+            _encoders[name] = Encoder(name)
+        except OSError as e:  # gated or missing model on Hugging Face
+            hint = (" DINOv3 is gated: request access and run `hf auth login`, or use the DINOv2 model "
+                    "(predict.py --dinov2, app/server.py --dinov2).") if name == "dinov3" else ""
+            raise ValueError(f"cannot load the {name} image model.{hint}") from e
     return _encoders[name]
 
 
@@ -58,6 +69,7 @@ def run_pipeline(images: Path, out: Path, model: Path = ROOT / "models/final.job
     bundle = load_bundle(model)
     planogram = load_planogram(planogram_path)
     ref_backbones = sorted({k.split("__")[-1] for k in np.load(references).files if "_emb__" in k})
+    dino = next((bb for bb in DINO_CHOICES if bb in ref_backbones), "dinov3")  # the references decide
     override = bundle.get("override")
     needed = [f for f in bundle["features"] if f != "handcrafted"] + (override["backbones"] if override else [])
     backbones = ref_backbones + [bb for bb in dict.fromkeys(needed) if bb not in ref_backbones]
@@ -80,7 +92,7 @@ def run_pipeline(images: Path, out: Path, model: Path = ROOT / "models/final.job
     bank = build_text_bank(encoder("siglip2"), load_descriptions(ROOT / "analysis/product_prompts.csv"),
                            load_kinds(ROOT / "analysis/products.csv"))
     handcrafted_csv = compute_features(out / "areas/manifest.csv", planogram, features_dir, references=references,
-                                       bank=bank, progress=lambda d, t: report("Comparing with the usual shelf",
+                                       bank=bank, dino=dino, progress=lambda d, t: report("Comparing with the usual shelf",
                                                                               0.7 + 0.25 * d / t))
     with open(handcrafted_csv, encoding="utf-8") as f:
         feats = list(csv.DictReader(f))
@@ -129,7 +141,10 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--model", type=Path, default=ROOT / "models/final.joblib")
     ap.add_argument("--references", type=Path, default=ROOT / "models/references.npz")
+    ap.add_argument("--dinov2", action="store_true", help="use the model built with DINOv2 (no DINOv3 access needed)")
     args = ap.parse_args()
+    if args.dinov2:
+        args.model, args.references = DINOV2["model"], DINOV2["references"]
 
     start = time.time()
     try:

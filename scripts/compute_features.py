@@ -23,7 +23,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shelfmon.features import AB_FEATURES, area_mask, crop_features  # noqa: E402
 from shelfmon.planogram import load_planogram  # noqa: E402
-from shelfmon.references import (REFERENCE_BACKBONES, build_reference, load_references,  # noqa: E402
+from shelfmon.references import (DINO_CHOICES, build_reference, load_references, reference_backbones,  # noqa: E402
                                  relative_feature_names, relative_features, save_references)
 from shelfmon.zeroshot import (ZEROSHOT_FEATURES, build_text_bank, load_descriptions, load_kinds,  # noqa: E402
                                zeroshot_features)
@@ -34,7 +34,7 @@ KEYS = ["camera_id", "image_file", "area_id"]
 def compute_features(manifest: Path, planogram: dict, features_dir: Path, frame_size=(1280, 720),
                      references: Path | None = None, save_references_to: Path | None = None, bank=None,
                      product_prompts: Path = Path("analysis/product_prompts.csv"),
-                     products: Path = Path("analysis/products.csv"), progress=None) -> Path:
+                     products: Path = Path("analysis/products.csv"), progress=None, dino: str = "dinov3") -> Path:
     """Write <features_dir>/handcrafted.csv for the manifest and return its path.
 
     references: compare against these saved references; without them, new references are built from
@@ -46,7 +46,7 @@ def compute_features(manifest: Path, planogram: dict, features_dir: Path, frame_
         rows = list(csv.DictReader(f))
     areas = {a.area_id: a for cam_areas in planogram.values() for a in cam_areas}
     camera_products = {cam: {a.product_id for a in cam_areas} for cam, cam_areas in planogram.items()}
-    embeddings = {bb: np.load(features_dir / f"{bb}.npy") for bb in REFERENCE_BACKBONES
+    embeddings = {bb: np.load(features_dir / f"{bb}.npy") for bb in reference_backbones(dino)
                   if (features_dir / f"{bb}.npy").exists()}
     for bb, e in embeddings.items():
         assert len(e) == len(rows), f"{bb}.npy has {len(e)} rows, manifest has {len(rows)}; re-run embed_crops.py"
@@ -106,12 +106,13 @@ def main():
     ap.add_argument("--save-references", type=Path, default=Path("models/references.npz"))
     ap.add_argument("--product-prompts", type=Path, default=Path("analysis/product_prompts.csv"))
     ap.add_argument("--products", type=Path, default=Path("analysis/products.csv"))
+    ap.add_argument("--dino", choices=DINO_CHOICES, default="dinov3", help="dinov2: the open fallback model")
     args = ap.parse_args()
 
     try:
         out = compute_features(args.manifest, load_planogram(args.planogram), args.features_dir, args.frame_size,
                                args.references, args.save_references, product_prompts=args.product_prompts,
-                               products=args.products,
+                               products=args.products, dino=args.dino,
                                progress=lambda done, total: print(f"\r{done}/{total} areas", end="", flush=True))
     except ValueError as e:
         sys.exit(f"\nerror: {e}")
