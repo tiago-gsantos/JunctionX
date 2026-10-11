@@ -1,6 +1,6 @@
 # Leaderboard
 
-Time-of-day cross-validation (7 rounds, 2 photos per camera held out each), official points on all 1962 labelled areas. Baseline (always compliant + always full): +1598 of 3924. Group C references are rebuilt per round without the held-out photos; runs marked @shared used references built from all photos (slightly optimistic).
+Time-of-day cross-validation (7 rounds, 2 photos per camera held out each), official points on all 1962 labelled areas. Baseline (always compliant + always full): +1598 of 3924. Group C references are rebuilt per round without the held-out photos; runs marked @shared used references built from all photos (slightly optimistic); runs marked @camera hold out one whole camera per round instead (14 rounds, shared references).
 
 | date | run | total | vs baseline | compliance | stock | most-likely rule |
 |---|---|---|---|---|---|---|
@@ -29,3 +29,12 @@ Time-of-day cross-validation (7 rounds, 2 photos per camera held out each), offi
 | 2026-10-10 22:51 | `hgb_handcrafted+dinov3` | +3522 | +1924 | +1905 | +1617 | +3499 |
 | 2026-10-10 22:51 | `hgb_handcrafted+radio` | +3538 | +1940 | +1896 | +1642 | +3533 |
 | 2026-10-10 22:52 | `hgb_handcrafted+siglip2+dinov3` | +3514 | +1916 | +1899 | +1615 | +3481 |
+| 2026-10-11 01:13 | `hgb_handcrafted+radio+proto_dinov2+proto_radio+proto_siglip2` | +3489 | +1891 | +1884 | +1605 | +3502 |
+| 2026-10-11 01:14 | `hgb_handcrafted+radio+proto_dinov2+proto_radio+proto_siglip2+override-proto` | +3489 | +1891 | +1884 | +1605 | +3502 |
+| 2026-10-11 01:14 | `hgb_handcrafted+radio+override-proto` | +3543 | +1945 | +1914 | +1629 | +3539 |
+| 2026-10-11 01:14 | `hgb_handcrafted+radio+override-proto-only` | +3489 | +1891 | +1860 | +1629 | +3485 |
+| 2026-10-11 01:15 | `hgb_handcrafted+radio+override-text` | +3501 | +1903 | +1872 | +1629 | +3497 |
+| 2026-10-11 01:15 | `hgb_handcrafted+radio@camera` | +2484 | +886 | +1560 | +924 | +2472 |
+| 2026-10-11 01:16 | `hgb_handcrafted+radio+override-proto@camera` | +2436 | +838 | +1512 | +924 | +2424 |
+| 2026-10-11 01:17 | `hgb_handcrafted+radio+override-proto-only@camera` | +2436 | +838 | +1512 | +924 | +2424 |
+| 2026-10-11 01:19 | `hgb_handcrafted+radio+override-proto-3votes` | +3552 | +1954 | +1923 | +1629 | +3548 |

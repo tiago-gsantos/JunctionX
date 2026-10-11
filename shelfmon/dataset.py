@@ -43,6 +43,12 @@ def time_folds(rows: list[dict], photos_per_fold: int = 2) -> np.ndarray:
     return np.array([rank[(r["camera_id"], r["image_file"])] // photos_per_fold for r in rows])
 
 
+def camera_folds(rows: list[dict]) -> np.ndarray:
+    """Round k holds out every photo of the k-th camera: can the model handle a camera it never saw?"""
+    cameras = sorted({r["camera_id"] for r in rows})
+    return np.array([cameras.index(r["camera_id"]) for r in rows])
+
+
 def load_table(manifest: Path, labels: Path, features_dir: Path, backbones: list[str],
                honest_references: bool = True) -> Table:
     """honest_references: use data/features/group_c_cv.npz (see scripts/compute_cv_references.py)."""
