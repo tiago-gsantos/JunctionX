@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Sense</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d1d1d'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23f8fd8f'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="wordmark">stock sense</span>
+    <span class="context" id="context"></span>
+  </div>
+  <div class="top-right">
+    <div class="stats" id="stats"></div>
+    <a class="btn btn-ghost btn-top" id="download" href="/api/predictions.json" download hidden>Download results
+      <span class="btn-circle" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v7M2.8 6 6 9.2 9.2 6"/></svg></span></a>
+    <button class="btn btn-primary btn-top" id="uploadBtn" type="button">Upload photos <span class="btn-arrow btn-up" aria-hidden="true"></span></button>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+  </div>
+</header>
+
+<main id="app" class="layout" hidden>
+  <section class="list-panel" aria-label="Tasks">
+    <div class="list-head">
+      <div class="todo">
+        <span class="todo-label">To do</span>
+        <span class="todo-count" id="todoCount">0</span>
+        <span class="todo-done" id="todoDone"></span>
+      </div>
+      <div class="segmented" role="tablist" id="groupBy">
+        <button role="tab" data-mode="priority">Priority</button>
+        <button role="tab" data-mode="location">Location</button>
+        <button role="tab" data-mode="product">Product</button>
+        <button role="tab" data-mode="type">Type</button>
+      </div>
+    </div>
+    <div class="list-body" id="list"></div>
+    <div class="list-foot"><kbd>↑</kbd><kbd>↓</kbd> move <kbd>D</kbd> mark done</div>
+  </section>
+  <section class="detail-panel" id="detail" aria-live="polite"></section>
+</main>
+
+<section id="welcome" class="welcome" hidden>
+  <div class="dropzone" id="dropzone">
+    <h1>See what to restock first.</h1>
+    <p>Upload the camera photos. Stock Sense checks every shelf area and lists what needs doing.</p>
+    <button class="btn btn-primary btn-lg" id="chooseBtn" type="button">Choose photo folder <span class="btn-arrow" aria-hidden="true"></span></button>
+    <p class="hint">or drop it here · one sub-folder per camera, e.g. <code>6215/1751045755.jpg</code></p>
+  </div>
+</section>
+
+<div class="overlay" id="processing" hidden>
+  <div class="dialog">
+    <h2 id="procTitle">Analysing photos</h2>
+    <div class="progress"><span id="procBar"></span></div>
+    <ol class="steps" id="procSteps"></ol>
+  </div>
+</div>
+
+<div class="overlay" id="fixDialog" hidden></div>
+<div class="overlay" id="zoomDialog" hidden></div>
+<div class="overlay drop-overlay" id="dropOverlay" hidden><p>Drop to upload new photos</p></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
